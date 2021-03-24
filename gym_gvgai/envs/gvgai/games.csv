@@ -1,3 +1,10 @@
 0,./examples/gridphysics/butterflies.txt
 1,./examples/gridphysics/chopper.txt
-2,./examples/gridphysics/frogs.txt
+2,./examples/gridphysics/deflection.txt
+3,./examples/gridphysics/frogs.txt
+4,./examples/gridphysics/intersection.txt
+5,./examples/gridphysics/jaws.txt
+6,./examples/gridphysics/chase.txt
+7,./examples/gridphysics/boulderdash.txt
+8,./examples/gridphysics/crossfire.txt
+9,./examples/gridphysics/bait.txt

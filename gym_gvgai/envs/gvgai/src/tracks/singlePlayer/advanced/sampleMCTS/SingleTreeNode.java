@@ -6,9 +6,15 @@ import core.game.StateObservation;
 import ontology.Types;
 import tools.ElapsedCpuTimer;
 import tools.Utils;
+import java.util.*;
+
 
 public class SingleTreeNode
 {
+    //*** Added for rave: variables
+    private final boolean USE_RAVE = true;
+    private final double bValue = 1.0;
+
     private final double HUGE_NEGATIVE = -10000000.0;
     private final double HUGE_POSITIVE =  10000000.0;
     public double epsilon = 1e-6;
@@ -17,6 +23,8 @@ public class SingleTreeNode
     public SingleTreeNode[] children;
     public double totValue;
     public int nVisits;
+    public double raveValue; //*** Added for rave
+    public int raveVisits; //*** Added for rave
     public Random m_rnd;
     public int m_depth;
     protected double[] bounds = new double[]{Double.MAX_VALUE, -Double.MAX_VALUE};
@@ -24,6 +32,7 @@ public class SingleTreeNode
 
     public int num_actions;
     Types.ACTIONS[] actions;
+    public static List<Types.ACTIONS> actionsInRollout; //*** Added for rave
     public int ROLLOUT_DEPTH = 10;
     public double K = Math.sqrt(2);
 
@@ -40,6 +49,7 @@ public class SingleTreeNode
         this.actions = actions;
         children = new SingleTreeNode[num_actions];
         totValue = 0.0;
+        raveValue = 0.0; //*** Added for rave
         this.childIdx = childIdx;
         if(parent != null)
             m_depth = parent.m_depth+1;
@@ -64,7 +74,7 @@ public class SingleTreeNode
             ElapsedCpuTimer elapsedTimerIteration = new ElapsedCpuTimer();
             SingleTreeNode selected = treePolicy(state);
             double delta = selected.rollOut(state);
-            backUp(selected, delta);
+            backUp(selected, delta); //*** This function is altered for rave
 
             numIters++;
             acumTimeTaken += (elapsedTimerIteration.elapsedMillis()) ;
@@ -84,7 +94,13 @@ public class SingleTreeNode
                 return cur.expand(state);
 
             } else {
-                SingleTreeNode next = cur.uct(state);
+                SingleTreeNode next;
+                if(USE_RAVE) {
+                    next = cur.uctRave(state);
+                }
+                else {
+                    next = cur.uct(state);
+                }
                 cur = next;
             }
         }
@@ -149,18 +165,58 @@ public class SingleTreeNode
         return selected;
     }
 
+    public double beta() {
+        return this.raveVisits / (this.nVisits + this.raveVisits + 4 * Math.pow(bValue, 2) * this.nVisits * this.raveVisits);
+    }
+
+    public SingleTreeNode uctRave(StateObservation state) {
+
+        SingleTreeNode selected = null;
+        double bestValue = -Double.MAX_VALUE;
+        for (SingleTreeNode child : this.children)
+        {
+            double hvVal = child.totValue;
+            double childValue = hvVal / (child.nVisits + this.epsilon);
+            double childRaveValue = child.raveValue / (child.raveVisits + this.epsilon);
+
+            childValue = Utils.normalise(childValue, bounds[0], bounds[1]);
+            childRaveValue = Utils.normalise(childRaveValue, bounds[0], bounds[1]);
+            double beta = child.beta();
+
+            double uct1Value = (1 - beta) * childValue + beta * childRaveValue +
+                    K * Math.sqrt(Math.log(this.nVisits + 1) / (child.nVisits + this.epsilon));
+
+            uct1Value = Utils.noise(uct1Value, this.epsilon, this.m_rnd.nextDouble());     //break ties randomly
+            // small sampleRandom numbers: break ties in unexpanded nodes
+            if (uct1Value > bestValue) {
+                selected = child;
+                bestValue = uct1Value;
+            }
+        }
+        if (selected == null)
+        {
+            throw new RuntimeException("Warning! returning null: " + bestValue + " : " + this.children.length + " " +
+            + bounds[0] + " " + bounds[1]);
+        }
+
+        //Roll the state:
+        state.advance(actions[selected.childIdx]);
+
+        return selected;
+    }
 
     public double rollOut(StateObservation state)
     {
         int thisDepth = this.m_depth;
+        actionsInRollout = new ArrayList<Types.ACTIONS>();
+
 
         while (!finishRollout(state,thisDepth)) {
-
             int action = m_rnd.nextInt(num_actions);
             state.advance(actions[action]);
+            this.actionsInRollout.add(actions[action]); //*** Added for rave
             thisDepth++;
         }
-
 
         double delta = value(state);
 
@@ -207,6 +263,16 @@ public class SingleTreeNode
         {
             n.nVisits++;
             n.totValue += result;
+            if(USE_RAVE) { //*** Added for rave
+                for(int i = 0; i < actions.length; i++) {
+                    if(actionsInRollout.contains(actions[i])) {
+                        if(n.children[i] != null) {
+                            n.children[i].raveValue += result;
+                            n.children[i].raveVisits++;
+                        }
+                    }
+                }
+            }
             if (result < n.bounds[0]) {
                 n.bounds[0] = result;
             }
