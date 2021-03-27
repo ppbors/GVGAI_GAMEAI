@@ -12,7 +12,7 @@ import java.util.*;
 public class SingleTreeNode
 {
     //*** Added for rave: variables
-    private final boolean USE_RAVE = true;
+    private final boolean USE_RAVE = false; // Zet dit aan voor RAVE
     private final double bValue = 1.0;
 
     private final double HUGE_NEGATIVE = -10000000.0;
